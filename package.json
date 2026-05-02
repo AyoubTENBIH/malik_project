@@ -1,0 +1,11 @@
+{
+  "name": "malik-project",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "postinstall": "npm install --prefix backend",
+    "start": "npm --prefix backend start"
+  }
+}
