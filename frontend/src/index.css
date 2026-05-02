@@ -1,27 +1,99 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
 html {
   scroll-behavior: smooth;
 }
 
-:root {
-  --page-bg: #f4f6fb;
-  --sidebar-bg: #ffffff;
-  --card-bg: #ffffff;
-  --pill-bg: #f1f5f9;
-  --border: #e2e8f0;
-  --text: #0f172a;
+/* Default / dark theme */
+:root,
+[data-theme="dark"] {
+  --bg-base: #0f1117;
+  --bg-surface: #13151f;
+  --bg-elevated: #1a1d2e;
+  --bg-border: #1e2130;
+  --accent-purple: #7c3aed;
+  --accent-violet: #6c63ff;
+  --accent-green: #10b981;
+  --accent-orange: #f59e0b;
+  --accent-red: #ef4444;
+  --text-primary: #f1f5f9;
+  --text-muted: #6b7280;
+  --text-dim: #374151;
+  --font-sans: "Inter", system-ui, sans-serif;
+
+  --sidebar-title-color: #ffffff;
+  --sidebar-muted: #6b7280;
+  --sidebar-link: #9ca3af;
+  --sidebar-link-hover-bg: #1e2130;
+  --sidebar-link-hover-text: #ffffff;
+  --scrollbar-thumb: #1e2130;
+  --sensor-hover-border: #2e3148;
+  --chart-tick: #6b7280;
+  --tooltip-bg: #1a1d2e;
+  --tooltip-border: #2e3148;
+
+  /* Legacy aliases used by chart components */
+  --page-bg: var(--bg-base);
+  --sidebar-bg: var(--bg-surface);
+  --card-bg: var(--bg-elevated);
+  --pill-bg: var(--bg-elevated);
+  --border: var(--bg-border);
+  --text: var(--text-primary);
+  --primary: var(--accent-purple);
+  --primary-dark: var(--accent-violet);
+  --chart-grid: var(--bg-border);
+  --shadow-sm: none;
+  --shadow-md: none;
+}
+
+[data-theme="light"] {
+  --bg-base: #f4f6fb;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f1f5f9;
+  --bg-border: #e2e8f0;
+  --text-primary: #0f172a;
   --text-muted: #64748b;
-  --primary: #6366f1;
-  --primary-dark: #4f46e5;
+  --text-dim: #94a3b8;
+
+  --sidebar-title-color: #0f172a;
+  --sidebar-muted: #64748b;
+  --sidebar-link: #475569;
+  --sidebar-link-hover-bg: #e2e8f0;
+  --sidebar-link-hover-text: #0f172a;
+  --scrollbar-thumb: #cbd5e1;
+  --sensor-hover-border: #cbd5e1;
+  --chart-tick: #64748b;
+  --tooltip-bg: #ffffff;
+  --tooltip-border: #e2e8f0;
+
+  --page-bg: var(--bg-base);
+  --sidebar-bg: var(--bg-surface);
+  --card-bg: var(--bg-elevated);
+  --pill-bg: #f1f5f9;
+  --border: var(--bg-border);
+  --text: var(--text-primary);
+  --chart-grid: var(--bg-border);
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 10px 25px -8px rgba(15, 23, 42, 0.12);
-  --chart-grid: #e5e7eb;
+  --shadow-md: 0 10px 25px -8px rgba(15, 23, 42, 0.1);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.4);
+  }
 }
 
 body {
   margin: 0;
-  background: var(--page-bg);
-  color: var(--text);
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 

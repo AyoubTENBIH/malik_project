@@ -8,6 +8,7 @@ import {
   CartesianGrid,
   ResponsiveContainer
 } from "recharts";
+import { Database } from "lucide-react";
 import { formatChartTime } from "../utils/chartTime";
 
 function MetricChart({
@@ -38,57 +39,71 @@ function MetricChart({
     <div className="metric-chart-card">
       <div className="metric-chart-card__head">
         <h3 className="metric-chart-card__title">{title}</h3>
-        {unit ? <span className="metric-chart-card__unit">{unit}</span> : null}
+        {unit ? (
+          <span className="metric-chart-card__unit">{unit}</span>
+        ) : null}
       </div>
       {!hasSeries || data.length === 0 ? (
         <div className="metric-chart-card__empty">
-          <span className="metric-chart-card__empty-icon">📡</span>
+          <Database size={28} strokeWidth={1.5} aria-hidden />
           <p>Pas encore de données pour cette métrique</p>
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart
-            data={chartData}
-            margin={{ top: 8, right: 12, bottom: 4, left: 4 }}
-          >
-            <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
-            <XAxis
-              dataKey="time"
-              tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-              minTickGap={16}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-              width={44}
-              domain={["auto", "auto"]}
-            />
-            <Tooltip
-              contentStyle={{
-                background: "var(--card-bg)",
-                border: "1px solid var(--border)",
-                borderRadius: "12px",
-                fontSize: 12
-              }}
-              formatter={v =>
-                v != null && Number.isFinite(Number(v))
-                  ? [`${Number(v).toFixed(2)} ${unit}`.trim(), displayName]
-                  : ["—", displayName]
-              }
-              labelFormatter={label => label}
-            />
-            <Line
-              type="monotone"
-              dataKey="value"
-              name={displayName}
-              stroke={color}
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        <div className="metric-chart-card__body">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={chartData}
+              margin={{ top: 8, right: 12, bottom: 4, left: 4 }}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="var(--bg-border)"
+              />
+              <XAxis
+                dataKey="time"
+                tick={{ fill: "var(--chart-tick)", fontSize: 10 }}
+                axisLine={{ stroke: "var(--bg-border)" }}
+                tickLine={{ stroke: "var(--bg-border)" }}
+                minTickGap={16}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                tick={{ fill: "var(--chart-tick)", fontSize: 10 }}
+                axisLine={{ stroke: "var(--bg-border)" }}
+                tickLine={{ stroke: "var(--bg-border)" }}
+                width={44}
+                domain={["auto", "auto"]}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "var(--tooltip-bg)",
+                  border: "1px solid var(--tooltip-border)",
+                  borderRadius: "8px",
+                  fontSize: 12,
+                  color: "var(--text-primary)"
+                }}
+                labelStyle={{ color: "var(--text-primary)" }}
+                itemStyle={{ color: "var(--text-primary)" }}
+                formatter={v =>
+                  v != null && Number.isFinite(Number(v))
+                    ? [`${Number(v).toFixed(2)} ${unit}`.trim(), displayName]
+                    : ["—", displayName]
+                }
+                labelFormatter={label => label}
+              />
+              <Line
+                type="monotone"
+                dataKey="value"
+                name={displayName}
+                stroke={color}
+                strokeWidth={2}
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       )}
     </div>
   );

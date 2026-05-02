@@ -11,8 +11,26 @@ import {
 } from "recharts";
 import { formatChartTime } from "../utils/chartTime";
 
+function OverviewLegend(props) {
+  const payload = props.payload;
+  if (!payload || !payload.length) return null;
+  return (
+    <ul className="overview-legend-pills">
+      {payload.map(entry => (
+        <li key={entry.dataKey ?? entry.value} className="overview-legend-pill">
+          <span
+            className="overview-legend-dot"
+            style={{ background: entry.color }}
+          />
+          {entry.value}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function CombinedOverviewChart({ data }) {
-  /** `data` est déjà chronologique (trié dans Dashboard). */
+  /** `data` est déjà chronologique (trié côté provider). */
   const chartData = useMemo(
     () =>
       data.map(item => ({
@@ -34,30 +52,47 @@ export default function CombinedOverviewChart({ data }) {
 
   return (
     <div className="combined-chart">
-      <div className="combined-chart__head">
-        <h2 className="section-title">Vue synthèse</h2>
-        <p className="section-sub">Température, humidité et gaz sur une même échelle temporelle</p>
+      <div className="combined-chart__head section-heading">
+        <h2>Vue synthèse</h2>
+        <p className="section-subtitle">
+          Température, humidité et gaz sur une même échelle temporelle
+        </p>
       </div>
-      <ResponsiveContainer width="100%" height={320}>
+      <ResponsiveContainer width="100%" height={280}>
         <LineChart
           data={chartData}
           margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
         >
-          <CartesianGrid stroke="var(--chart-grid)" />
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="var(--bg-border)"
+          />
           <XAxis
             dataKey="time"
-            tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+            tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
+            axisLine={{ stroke: "var(--bg-border)" }}
+            tickLine={{ stroke: "var(--bg-border)" }}
             minTickGap={24}
           />
-          <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
+          <YAxis
+            tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
+            axisLine={{ stroke: "var(--bg-border)" }}
+            tickLine={{ stroke: "var(--bg-border)" }}
+          />
           <Tooltip
             contentStyle={{
-              background: "var(--card-bg)",
-              border: "1px solid var(--border)",
-              borderRadius: "12px"
+              background: "var(--tooltip-bg)",
+              border: "1px solid var(--tooltip-border)",
+              borderRadius: "8px",
+              color: "var(--text-primary)"
             }}
+            labelStyle={{ color: "var(--text-primary)" }}
+            itemStyle={{ color: "var(--text-primary)" }}
           />
-          <Legend />
+          <Legend
+            verticalAlign="bottom"
+            content={legendProps => <OverviewLegend {...legendProps} />}
+          />
           <Line
             type="monotone"
             dataKey="temperature"
