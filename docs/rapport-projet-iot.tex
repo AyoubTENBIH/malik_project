@@ -1,0 +1,262 @@
+% !TeX program = pdflatex
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!70!black,
+  citecolor=blue!60!black,
+  pdftitle={Rapport technique — Plateforme IoT},
+  pdfauthor={Projet IoT}
+}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!5},
+  columns=fullflexible
+}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\footnotesize Rapport technique IoT}
+\lhead{\footnotesize \leftmark}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{\textbf{Plateforme de supervision IoT\\capteurs industriels et tableau de bord temps réel}}
+\author{Projet IoT — ESP32, MQTT, Node.js, Firebase et React}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+\noindent
+Ce document présente une solution complète de collecte, persistance et visualisation de mesures issues d'une carte ESP32 : transport MQTT vers un broker public, traitement côté serveur Node.js, écriture dans Firebase Realtime Database et MongoDB, et affichage dans une application React. Une section dédiée décrit l'architecture de déploiement visée (frontend sur Vercel, backend « processus long » sur un hébergeur type Railway, Render ou machine virtuelle), ainsi que les raisons de ce découplage.
+\end{abstract}
+
+\vspace{1em}
+\noindent\textbf{Mots-clés :} IoT, ESP32, MQTT, HiveMQ, Node.js, Firebase Realtime Database, MongoDB Atlas, React, architecture cloud, Vercel.
+
+\tableofcontents
+\newpage
+
+% ---------------------------------------------------------------------------
+\section{Contexte et objectifs}
+
+Le projet vise à démontrer une chaîne bout-en-bout typique d'un système IoT de type \emph{proof of concept} : acquisition physique (capteurs), transmission sans fil via MQTT, agrégation serveur, stockage historique et temps réel, puis visualisation dans un navigateur.
+
+\subsection{Objectifs fonctionnels}
+\begin{itemize}[leftmargin=*]
+  \item recevoir des mesures (température, humidité, gaz, courant, tension, vibrations, IMU, etc.) publiées par un équipement sur un topic MQTT ;
+  \item enrichir les données (horodatage serveur) et les dupliquer vers une base documentaire et une base temps réel ;
+  \item afficher un tableau de bord réactif avec graphiques et navigation par métrique ;
+  \item permettre un déploiement où le frontend et le backend ont des contraintes d'hébergement différentes.
+\end{itemize}
+
+\subsection{Objectifs techniques}
+\begin{itemize}[leftmargin=*]
+  \item séparer clairement \emph{transport MQTT / worker Node.js} et \emph{interface utilisateur React} ;
+  \item utiliser Firebase RTDB comme source unique de vérité pour la lecture navigateur ;
+  \item documenter une architecture cloud réaliste (Vercel + worker continu + bases managées).
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\section{Vue d'ensemble de l'architecture logique}
+
+La figure~\ref{fig:arch-logique} résume les flux entre les composants principaux.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+    font=\small,
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1cm, align=center},
+    arrow/.style={-{Stealth[length=2mm]}, thick}
+  ]
+    \node[box, fill=blue!12] (esp) {ESP32};
+    \node[box, fill=orange!15, right=1.8cm of esp] (broker) {Broker MQTT\\\footnotesize (ex.\ HiveMQ public)};
+    \node[box, fill=green!12, right=1.8cm of broker] (node) {Backend Node.js\\MQTT + Express + Socket.IO};
+    \node[box, fill=yellow!15, below=1.4cm of node, xshift=-2.2cm] (mongo) {MongoDB\\\footnotesize (local / Atlas)};
+    \node[box, fill=red!12, below=1.4cm of node, xshift=2.2cm] (fb) {Firebase RTDB\\\footnotesize (Admin SDK)};
+    \node[box, fill=cyan!15, below=2.8cm of fb] (react) {Frontend React\\\footnotesize (SDK client / lecture)};
+    \node[box, fill=gray!15, left=2.5cm of react] (browser) {Navigateur};
+
+    \draw[arrow] (esp) -- node[above, font=\scriptsize] {publish} (broker);
+    \draw[arrow] (broker) -- node[above, font=\scriptsize] {subscribe} (node);
+    \draw[arrow] (node) -- node[left, font=\scriptsize, sloped] {insertOne} (mongo);
+    \draw[arrow] (node) -- node[right, font=\scriptsize, sloped] {push / write} (fb);
+    \draw[arrow, dashed] (node.west) -- ++(-1.2,0) |- (browser.north)
+      node[pos=0.12, above, font=\scriptsize] {Socket.IO (optionnel)};
+    \draw[arrow] (fb) -- node[right, font=\scriptsize] {temps réel} (react);
+    \draw[arrow] (react) -- (browser);
+  \end{tikzpicture}
+  \caption{Architecture logique : MQTT comme transport carte--serveur ; Node écrit MongoDB et Firebase ; React lit uniquement Firebase.}
+  \label{fig:arch-logique}
+\end{figure}
+
+\subsection{Rôle de chaque brique}
+
+\begin{description}[style=nextline]
+  \item[ESP32] Publie des messages JSON sur un topic MQTT (ex.\ \texttt{imprimante/ligne1/capteurs}). Peut utiliser HTTPS séparément selon le firmware ; le chemin principal du projet est MQTT.
+  \item[Broker MQTT] Découple producteurs et consommateurs. Un broker public gratuit (ex.\ \texttt{broker.hivemq.com}) suffit pour un POC si le nom de topic est suffisamment unique et acceptable niveau confidentialité.
+  \item[Backend Node.js] Processus \emph{longue durée} : \texttt{mqtt.connect}, réception des messages, sérialisation compatible Firebase, écriture RTDB puis insertion MongoDB, diffusion optionnelle via Socket.IO vers un petit dashboard Express statique.
+  \item[Firebase Realtime Database] Persistance temps réel et synchronisation avec le client web ; le backend utilise l'Admin SDK pour écrire sous un chemin dédié (\texttt{capteurs}).
+  \item[MongoDB] Historisation documentaire ; en développement le code référence souvent \texttt{mongodb://127.0.0.1} — en production, MongoDB Atlas ou équivalent est requis.
+  \item[Frontend React] Build statique ; écoute Firebase en lecture seule (\texttt{onValue}). Une fois les données dans RTDB, l'affichage ne dépend pas du serveur Node pour les mesures.
+\end{description}
+
+% ---------------------------------------------------------------------------
+\section{Architecture de déploiement (répartition cloud)}
+
+Cette section formalise la vision « déployée » : où vit chaque morceau et pourquoi ce choix est cohérent pour un worker MQTT continu versus une application React servie en fichiers statiques.
+
+\subsection{Schéma de répartition}
+
+\begin{center}
+\begin{tabular}{@{}p{3.2cm}p{4.5cm}p{6.5cm}@{}}
+\toprule
+\textbf{Composant} & \textbf{Cible typique} & \textbf{Rôle} \\
+\midrule
+Frontend React & Vercel (ou équivalent) & Fichiers statiques après \texttt{npm run build} ; éventuellement fonctions serverless ; idéal pour le dashboard. \\
+Backend Node.js & Railway, Render, Fly.io, VM (Oracle Cloud, etc.) & Processus qui reste actif : \texttt{mqtt.connect} + écritures Firebase + MongoDB ; \emph{pas} un modèle « une requête HTTP et terminé ». \\
+Broker MQTT & HiveMQ public (ou autre) & Le ESP publie ; le backend dans le cloud doit autoriser le trafic sortant vers le broker (souvent port 1883). \\
+Firebase RTDB & Google Cloud / Firebase & Inchangé : backend écrit, navigateur lit. \\
+MongoDB & Atlas (recommandé) & En production, éviter \texttt{127.0.0.1} ; offre gratuite limitée possible pour un MVP. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Pourquoi Vercel pour le front, mais pas pour le backend MQTT}
+
+\begin{center}
+\begin{tabular}{@{}p{3.5cm}p{2.2cm}p{8cm}@{}}
+\toprule
+\textbf{Composant} & \textbf{Vercel} & \textbf{Justification} \\
+\midrule
+React (build) & Très adapté & Assets statiques ; éventuellement Serverless Functions pour des APIs courtes ; parfait pour le tableau de bord. \\
+Backend MQTT + Node & Inadapté & Il faut un processus qui \emph{écoute} MQTT en permanence. Les fonctions serverless sur Vercel ont des timeouts et ne remplacent pas un worker 24/7. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\textbf{Conséquence :} Vercel sert uniquement le frontend (choix cohérent). Le worker MQTT doit être hébergé sur une plateforme « container / worker » ou une machine virtuelle exécutant \texttt{node server.js} sans limite de durée comparable à celle des fonctions HTTP courtes.
+
+\subsection{Options d'hébergement pour le backend (gratuit / essai)}
+
+Les offres évoluent ; il convient de vérifier les sites officiels.
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Railway :} pratique pour Node ; souvent crédit d'essai — utile pour une démonstration sur quelques semaines.
+  \item \textbf{Render :} instance web gratuite parfois disponible avec limites ; attention au \emph{sleep} sur l'offre gratuite — pour du MQTT continu, il faut une offre sans mise en veille ou accepter des interruptions.
+  \item \textbf{Fly.io :} parfois crédit gratuit ; adapté à un petit processus long.
+  \item \textbf{Oracle Cloud « Always Free » (VM) :} machine Linux gratuite si l'on accepte la gestion (Linux, PM2, pare-feu) — très viable pour un backend MQTT toujours actif.
+\end{itemize}
+
+\subsection{Chaîne de déploiement pratique}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Vercel :} déployer le dossier \texttt{frontend} après \texttt{npm run build}, répertoire de sortie statique \texttt{build}.
+  \item \textbf{Railway (ou autre) :} déployer le dossier \texttt{backend} avec \texttt{npm start} ; exposer le port (souvent la plateforme injecte \texttt{process.env.PORT} — à utiliser si le serveur Express écoute au lieu d'un port fixe comme \texttt{3000}).
+  \item \textbf{MQTT :} l'ESP continue de publier vers le même broker et le même topic ; le backend cloud doit uniquement avoir accès Internet sortant vers le broker.
+  \item \textbf{Firebase :} configuration inchangée côté logique — écriture Admin SDK, lecture SDK client.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section{Implémentation dans le dépôt}
+
+\subsection{Backend (\texttt{backend/server.js})}
+
+Le serveur charge Express et Socket.IO, se connecte au broker HiveMQ, s'abonne au topic configuré, et pour chaque message JSON :
+\begin{itemize}[leftmargin=*]
+  \item ajoute un horodatage serveur (\texttt{serverTime}) ;
+  \item pousse un payload sérialisable vers Firebase (\texttt{capteurs}) — avant MongoDB pour éviter d'inclure un \texttt{ObjectId} incompatible avec RTDB ;
+  \item insère le document dans la collection \texttt{capteurs} de MongoDB ;
+  \item émet l'événement Socket.IO \texttt{data} pour le mini-dashboard statique servi depuis \texttt{public/}.
+\end{itemize}
+
+\subsection{Frontend (\texttt{frontend/})}
+
+L'application React utilise le SDK Firebase (\texttt{getDatabase}, \texttt{onValue}) sur le chemin \texttt{capteurs} (surchargeable via \texttt{REACT\_APP\_FIREBASE\_CAPTEURS\_PATH}). Les variables d'environnement \texttt{REACT\_APP\_*} permettent de retirer les valeurs par défaut codées dans \texttt{firebase.js} pour la production. Le module \texttt{utils/sensorReading.js} normalise les alias de champs (température/temp, gaz/gas, accéléromètres, gyroscopes, etc.) pour alimenter des graphiques Recharts et une vue d'ensemble.
+
+\subsection{Dépendances principales}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Couche} & \textbf{Packages notables} \\
+\midrule
+Backend & \texttt{mqtt}, \texttt{express}, \texttt{socket.io}, \texttt{firebase-admin}, \texttt{mongodb} \\
+Frontend & \texttt{react}, \texttt{firebase}, \texttt{recharts}, \texttt{react-scripts} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ---------------------------------------------------------------------------
+\section{Sécurité, secrets et production}
+
+\subsection{Secrets backend}
+
+Le fichier \texttt{firebaseKey.json} (compte de service Firebase) ne doit \textbf{jamais} être versionné. Sur Railway, Render ou équivalent, fournir le JSON via variable d'environnement secrète ou fichier monté selon la documentation de la plateforme.
+
+\subsection{Frontend et clés publiques}
+
+Les clés « API web » Firebase sont exposables côté client ; la protection des données repose sur les \textbf{règles de sécurité} Realtime Database (et éventuellement Authentication). Il reste recommandé d'utiliser \texttt{REACT\_APP\_*} dans Vercel pour centraliser la configuration.
+
+\subsection{MongoDB}
+
+Remplacer l'URI locale par une chaîne de connexion Atlas (utilisateur/mot de passe, réseau autorisé, TLS). Pour un MVP minimal, on peut rendre MongoDB optionnel et ne conserver que Firebase — à condition d'adapter le code pour ne pas faire échouer le worker si MongoDB est indisponible.
+
+\subsection{MQTT public}
+
+Un broker public impose des limites de débit et une confidentialité limitée par conception. Pour un POC, un topic unique réduit les collisions ; pour la production, envisager un broker privé, TLS (\texttt{mqtts://}), et authentification.
+
+% ---------------------------------------------------------------------------
+\section{Flux de données résumé}
+
+\begin{enumerate}[leftmargin=*]
+  \item L'ESP32 publie un JSON sur le topic MQTT.
+  \item Le backend Node souscrit, valide et enrichit les données.
+  \item Firebase RTDB reçoit un nouvel enfant sous \texttt{capteurs} ; le client React reçoit la mise à jour en quasi temps réel.
+  \item MongoDB conserve une copie pour analyse ou historique hors ligne Firebase.
+  \item Le dashboard React affiche tendances et métriques sans appeler le serveur Node pour la lecture des mesures stockées dans Firebase.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section{Perspectives techniques}
+
+\begin{itemize}[leftmargin=*]
+  \item Paramétrer \texttt{PORT}, URI MongoDB, broker MQTT et topic via variables d'environnement.
+  \item Ajouter un \texttt{Dockerfile} pour le backend et une CI (GitHub Actions) pour build et déploiement.
+  \item Renforcer les règles Firebase et ajouter l'authentification utilisateur si le tableau de bord est exposé publiquement.
+  \item Tests automatisés sur la normalisation des payloads et sur les chemins d'écriture Firebase mockés.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\section{Conclusion}
+
+Le projet illustre une architecture IoT moderne : MQTT pour le lien terrain, un worker Node pour la logique métier et la persistance double (temps réel + documentaire), et React pour la visualisation découplée du backend grâce à Firebase. La répartition Vercel pour le frontend et un hébergeur « processus long » pour le backend MQTT reflète des contraintes réelles des plateformes serverless et assure une trajectoire de déploiement réaliste pour un POC ou une première mise en production contrôlée.
+
+\end{document}

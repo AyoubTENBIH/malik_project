@@ -1,0 +1,9 @@
+# Railway : définir le dossier racine du service sur /backend dans le dashboard,
+# ou bien monorepo avec "Root Directory" = backend.
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

@@ -1,15 +1,11 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getDatabase } from "firebase/database";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+const fallbackConfig = {
   apiKey: "AIzaSyBfErk5AjbyTqxVprw_yKuVEJDMEldg4pc",
   authDomain: "iot-projet-97fb4.firebaseapp.com",
-  databaseURL: "https://iot-projet-97fb4-default-rtdb.europe-west1.firebasedatabase.app",
+  databaseURL:
+    "https://iot-projet-97fb4-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "iot-projet-97fb4",
   storageBucket: "iot-projet-97fb4.firebasestorage.app",
   messagingSenderId: "21965598044",
@@ -17,6 +13,26 @@ const firebaseConfig = {
   measurementId: "G-WTQSXM0M14"
 };
 
-// Initialize Firebase
+const firebaseConfig = {
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || fallbackConfig.apiKey,
+  authDomain:
+    process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || fallbackConfig.authDomain,
+  databaseURL:
+    process.env.REACT_APP_FIREBASE_DATABASE_URL || fallbackConfig.databaseURL,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || fallbackConfig.projectId,
+  storageBucket:
+    process.env.REACT_APP_FIREBASE_STORAGE_BUCKET ||
+    fallbackConfig.storageBucket,
+  messagingSenderId:
+    process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID ||
+    fallbackConfig.messagingSenderId,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || fallbackConfig.appId,
+  measurementId:
+    process.env.REACT_APP_FIREBASE_MEASUREMENT_ID ||
+    fallbackConfig.measurementId
+};
+
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+/** Realtime Database — même chemin que le backend Node (`capteurs`) et usage ESP courant */
+export const rtdb = getDatabase(app);
