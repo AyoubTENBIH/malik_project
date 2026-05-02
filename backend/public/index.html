@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>IoT Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>🔥 IoT Dashboard Temps Réel</h1>
+
+<div class="grid">
+  <div class="card">🌡 Temp: <span id="temp">--</span></div>
+  <div class="card">🔥 Gaz: <span id="gaz">--</span></div>
+  <div class="card">⚡ Courant: <span id="current">--</span></div>
+  <div class="card">🔌 Tension: <span id="voltage">--</span></div>
+  <div class="card">📳 Piezo: <span id="piezo">--</span></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
