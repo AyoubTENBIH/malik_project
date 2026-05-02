@@ -6,6 +6,7 @@ const mqtt = require("mqtt");
 const { MongoClient } = require("mongodb");
 const admin = require("firebase-admin");
 const express = require("express");
+const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const socketIo = require("socket.io");
@@ -15,16 +16,42 @@ const mqttBroker = process.env.MQTT_BROKER_URL || "mqtt://broker.hivemq.com";
 const topic = process.env.MQTT_TOPIC || "imprimante/ligne1/capteurs";
 const mongoURL = process.env.MONGODB_URI || "";
 const dbName = process.env.MONGODB_DB_NAME || "iot_db";
-const databaseURL =
+
+/**
+ * RTDB exige une URL **racine** (host uniquement), sans chemin type /capteurs ni slash final
+ * qui peut être interprété comme un sous-chemin selon le SDK.
+ */
+function normalizeRtdbUrl(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return s;
+  try {
+    const u = new URL(s);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return s.replace(/\/+$/, "");
+  }
+}
+
+const databaseURL = normalizeRtdbUrl(
   process.env.FIREBASE_DATABASE_URL ||
-  "https://iot-projet-97fb4-default-rtdb.europe-west1.firebasedatabase.app/";
+    "https://iot-projet-97fb4-default-rtdb.europe-west1.firebasedatabase.app"
+);
 
 function loadServiceAccount() {
-  const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (json && String(json).trim()) {
-    return JSON.parse(json);
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (raw && String(raw).trim()) {
+    return JSON.parse(raw);
   }
-  return require(path.join(__dirname, "firebaseKey.json"));
+  const fromFile =
+    process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+    path.join(__dirname, "firebaseKey.json");
+  if (fs.existsSync(fromFile)) {
+    return JSON.parse(fs.readFileSync(fromFile, "utf8"));
+  }
+  throw new Error(
+    "Firebase Admin: ajoutez la variable secrète FIREBASE_SERVICE_ACCOUNT_JSON sur Railway " +
+      "(contenu JSON du compte de service, une seule ligne). En local, placez firebaseKey.json dans backend/ ou définissez GOOGLE_APPLICATION_CREDENTIALS. Voir backend/.env.example."
+  );
 }
 
 let mqttConnected = false;
