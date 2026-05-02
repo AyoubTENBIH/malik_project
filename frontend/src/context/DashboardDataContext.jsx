@@ -45,6 +45,9 @@ export const METRICS = [
   { key: "gyroZ", title: "Gyro Z", unit: "rad/s", color: "#eab308" }
 ];
 
+/** Référence stable quand aucune lecture (évite react-hooks/exhaustive-deps sur le contexte). */
+const EMPTY_LATEST = {};
+
 export function DashboardDataProvider({ children }) {
   const [data, setData] = useState([]);
   const [zone, setZone] = useState("printer");
@@ -80,7 +83,7 @@ export function DashboardDataProvider({ children }) {
     [data]
   );
 
-  const latest = data[0] || {};
+  const latest = data[0] ?? EMPTY_LATEST;
 
   const format = useCallback((value, unit = "") => {
     if (value === undefined || value === null) return "—";
