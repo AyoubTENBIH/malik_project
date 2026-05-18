@@ -1,7 +1,26 @@
 import React from "react";
-import { Moon, Sun } from "lucide-react";
+import { Download, Moon, Sun } from "lucide-react";
 import { useDashboardData, useTheme } from "../context/DashboardDataContext";
 import CombinedOverviewChart from "../components/CombinedOverviewChart";
+import BedPositionViewer from "../components/bed3d/BedPositionViewer";
+
+function PrinterMetric({ label, value, unit = "" }) {
+  return (
+    <div className="printer-metric">
+      <span className="printer-metric__label">{label}</span>
+      <span className="printer-metric__value">
+        {value != null ? (
+          <>
+            {typeof value === "number" ? Number(value).toFixed(1) : value}
+            {unit ? <small> {unit}</small> : null}
+          </>
+        ) : (
+          "—"
+        )}
+      </span>
+    </div>
+  );
+}
 
 export default function VueGenerale() {
   const {
@@ -10,14 +29,17 @@ export default function VueGenerale() {
     latest,
     tempAlert,
     gasAlert,
-    nowLabel,
+    faultAlert,
+    faultLabelFr,
     lastUpdate,
-    setZone
+    setZone,
+    downloadCsv
   } = useDashboardData();
 
   const { toggleTheme, isDark } = useTheme();
 
-  const alertCount = (tempAlert ? 1 : 0) + (gasAlert ? 1 : 0);
+  const alertCount =
+    (tempAlert ? 1 : 0) + (gasAlert ? 1 : 0) + (faultAlert ? 1 : 0);
 
   return (
     <div className="page-inner">
@@ -29,6 +51,24 @@ export default function VueGenerale() {
           </p>
         </div>
         <div className="page-header__tools">
+          <button
+            type="button"
+            className="btn-export"
+            onClick={() => downloadCsv("dataset")}
+            title="Télécharger dataset_labeled.csv"
+          >
+            <Download size={16} strokeWidth={2} aria-hidden />
+            CSV données
+          </button>
+          <button
+            type="button"
+            className="btn-export btn-export--secondary"
+            onClick={() => downloadCsv("marlin")}
+            title="Télécharger marlin_logs.csv"
+          >
+            <Download size={16} strokeWidth={2} aria-hidden />
+            CSV Marlin
+          </button>
           <button
             type="button"
             className="theme-toggle"
@@ -73,30 +113,26 @@ export default function VueGenerale() {
       <section className="section-block">
         <div className="vue-kpi-grid">
           <div className="vue-kpi-hero">
-            <div className="vue-kpi-hero__date">{nowLabel}</div>
             <div className="vue-kpi-hero__temp">
-              {latest.temperature != null ? (
+              {latest.tempMotorTop != null ? (
                 <>
-                  {Number(latest.temperature).toFixed(1)}
+                  {Number(latest.tempMotorTop).toFixed(0)}
                   <small> °C</small>
                 </>
               ) : (
                 <span className="sensor-card__empty">—</span>
               )}
             </div>
-            <p className="vue-kpi-hero__caption">
-              Température ambiante / caisson
-            </p>
+            <p className="vue-kpi-hero__caption">Température moteur (haut)</p>
             <div className="vue-kpi-hero__chips">
               <span className="vue-kpi-chip">
-                Gaz{" "}
-                {latest.gas != null ? `${Math.round(latest.gas)} ppm` : "—"}
+                Moteur bas{" "}
+                {latest.tempMotorBottom != null
+                  ? `${Number(latest.tempMotorBottom).toFixed(0)} °C`
+                  : "—"}
               </span>
               <span className="vue-kpi-chip">
-                Humidité{" "}
-                {latest.humidity != null
-                  ? `${Number(latest.humidity).toFixed(0)} %`
-                  : "—"}
+                Gaz {latest.gas != null ? Math.round(latest.gas) : "—"}
               </span>
             </div>
           </div>
@@ -135,6 +171,80 @@ export default function VueGenerale() {
         </div>
 
         <CombinedOverviewChart data={dataChronological} />
+      </section>
+
+      <BedPositionViewer />
+
+      <section className="section-block panel-grid-2">
+        <div className="info-panel">
+          <div className="section-heading">
+            <h2>Imprimante 3D</h2>
+            <p className="section-subtitle">Données Marlin fusionnées</p>
+          </div>
+          <div className="printer-grid">
+            <PrinterMetric
+              label="Buse"
+              value={latest.nozzleTemp}
+              unit={`/ ${latest.nozzleTarget ?? "—"} °C`}
+            />
+            <PrinterMetric
+              label="Plateau"
+              value={latest.bedTemp}
+              unit={`/ ${latest.bedTarget ?? "—"} °C`}
+            />
+            <PrinterMetric label="Puissance hotend" value={latest.hotendPower} />
+            <PrinterMetric label="Puissance plateau" value={latest.bedPower} />
+            <PrinterMetric label="X" value={latest.posX} unit="mm" />
+            <PrinterMetric label="Y" value={latest.posY} unit="mm" />
+            <PrinterMetric label="Z" value={latest.posZ} unit="mm" />
+            <PrinterMetric label="E" value={latest.posE} unit="mm" />
+          </div>
+        </div>
+
+        <div
+          className={`info-panel info-panel--ai${faultAlert ? " info-panel--ai-alert" : ""}`}
+        >
+          <div className="section-heading">
+            <h2>Diagnostics IA</h2>
+            <p className="section-subtitle">
+              Module IA à connecter — emplacements réservés
+            </p>
+          </div>
+          <dl className="ai-labels">
+            <div className="ai-labels__row">
+              <dt>État</dt>
+              <dd
+                className={
+                  faultAlert ? "ai-labels__value--alert" : "ai-labels__value"
+                }
+              >
+                {faultLabelFr}
+              </dd>
+            </div>
+            <div className="ai-labels__row">
+              <dt>Code défaut</dt>
+              <dd className="ai-labels__value">
+                {latest.faultCode != null ? latest.faultCode : "—"}
+              </dd>
+            </div>
+            <div className="ai-labels__row">
+              <dt>Label brut</dt>
+              <dd className="ai-labels__value ai-labels__value--mono">
+                {latest.faultLabel || "NORMAL"}
+              </dd>
+            </div>
+            <div className="ai-labels__row ai-labels__row--placeholder">
+              <dt>Confiance IA</dt>
+              <dd className="ai-labels__value ai-labels__placeholder">—</dd>
+            </div>
+            <div className="ai-labels__row ai-labels__row--placeholder">
+              <dt>Recommandation</dt>
+              <dd className="ai-labels__value ai-labels__placeholder">
+                En attente du module IA
+              </dd>
+            </div>
+          </dl>
+        </div>
       </section>
     </div>
   );

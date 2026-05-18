@@ -6,6 +6,10 @@
   },
   "scripts": {
     "postinstall": "npm install --prefix backend",
-    "start": "npm --prefix backend start"
+    "start": "npm --prefix backend start",
+    "collector": "node collector.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.15.1"
   }
 }

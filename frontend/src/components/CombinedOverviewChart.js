@@ -30,14 +30,14 @@ function OverviewLegend(props) {
 }
 
 export default function CombinedOverviewChart({ data }) {
-  /** `data` est déjà chronologique (trié côté provider). */
   const chartData = useMemo(
     () =>
       data.map(item => ({
         time: formatChartTime(item),
-        temperature: item.temperature,
-        humidity: item.humidity,
-        gas: item.gas
+        tempMotorTop: item.tempMotorTop,
+        tempMotorBottom: item.tempMotorBottom,
+        gas: item.gas,
+        nozzleTemp: item.nozzleTemp
       })),
     [data]
   );
@@ -55,7 +55,7 @@ export default function CombinedOverviewChart({ data }) {
       <div className="combined-chart__head section-heading">
         <h2>Vue synthèse</h2>
         <p className="section-subtitle">
-          Température, humidité et gaz sur une même échelle temporelle
+          Températures moteurs, gaz et buse sur la même échelle temporelle
         </p>
       </div>
       <ResponsiveContainer width="100%" height={280}>
@@ -95,8 +95,8 @@ export default function CombinedOverviewChart({ data }) {
           />
           <Line
             type="monotone"
-            dataKey="temperature"
-            name="Temp. °C"
+            dataKey="tempMotorTop"
+            name="Moteur haut °C"
             stroke="#ef4444"
             strokeWidth={2}
             dot={false}
@@ -105,9 +105,9 @@ export default function CombinedOverviewChart({ data }) {
           />
           <Line
             type="monotone"
-            dataKey="humidity"
-            name="Humidité %"
-            stroke="#3b82f6"
+            dataKey="tempMotorBottom"
+            name="Moteur bas °C"
+            stroke="#f97316"
             strokeWidth={2}
             dot={false}
             connectNulls
@@ -116,8 +116,18 @@ export default function CombinedOverviewChart({ data }) {
           <Line
             type="monotone"
             dataKey="gas"
-            name="Gaz ppm"
+            name="Gaz"
             stroke="#10b981"
+            strokeWidth={2}
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="nozzleTemp"
+            name="Buse °C"
+            stroke="#dc2626"
             strokeWidth={2}
             dot={false}
             connectNulls

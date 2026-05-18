@@ -1,7 +1,6 @@
 // ===================== CONFIG (.env en local) =====================
 require("dotenv").config();
 
-// ===================== IMPORTS =====================
 const mqtt = require("mqtt");
 const { MongoClient } = require("mongodb");
 const admin = require("firebase-admin");
@@ -11,16 +10,27 @@ const http = require("http");
 const path = require("path");
 const socketIo = require("socket.io");
 
+const {
+  parseMarlinLine,
+  flattenSensorPayload,
+  detectFault,
+  datasetCsvLine,
+  DATASET_HEADER
+} = require("./lib/iotProcessing");
+
 const PORT = Number(process.env.PORT) || 3000;
 const mqttBroker = process.env.MQTT_BROKER_URL || "mqtt://broker.hivemq.com";
-const topic = process.env.MQTT_TOPIC || "imprimante/ligne1/capteurs";
+const topicCapteurs =
+  process.env.MQTT_TOPIC_CAPTEURS || "malik/imprimante/ligne1/capteurs";
+const topicMarlin =
+  process.env.MQTT_TOPIC_MARLIN || "malik/imprimante/ligne1/marlin";
 const mongoURL = process.env.MONGODB_URI || "";
 const dbName = process.env.MONGODB_DB_NAME || "iot_db";
 
-/**
- * RTDB exige une URL **racine** (host uniquement), sans chemin type /capteurs ni slash final
- * qui peut être interprété comme un sous-chemin selon le SDK.
- */
+const dataDir = process.env.DATA_DIR || path.join(__dirname, "..");
+const datasetFile = path.join(dataDir, "dataset_labeled.csv");
+const marlinFile = path.join(dataDir, "marlin_logs.csv");
+
 function normalizeRtdbUrl(raw) {
   const s = String(raw || "").trim();
   if (!s) return s;
@@ -48,22 +58,34 @@ function loadServiceAccount() {
   if (fs.existsSync(fromFile)) {
     return JSON.parse(fs.readFileSync(fromFile, "utf8"));
   }
-  throw new Error(
-    "Firebase Admin: ajoutez la variable secrète FIREBASE_SERVICE_ACCOUNT_JSON sur Railway " +
-      "(contenu JSON du compte de service, une seule ligne). En local, placez firebaseKey.json dans backend/ ou définissez GOOGLE_APPLICATION_CREDENTIALS. Voir backend/.env.example."
-  );
+  return null;
+}
+
+function ensureCsvFiles() {
+  if (!fs.existsSync(datasetFile)) {
+    fs.writeFileSync(datasetFile, DATASET_HEADER);
+  }
+  if (!fs.existsSync(marlinFile)) {
+    fs.writeFileSync(marlinFile, "timestamp,raw_marlin\n");
+  }
 }
 
 let mqttConnected = false;
 let db;
 
-// ===================== MQTT (connexion tôt) =====================
 const mqttClient = mqtt.connect(mqttBroker);
 
-// ===================== WEB SERVER =====================
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
+
+app.use((req, res, next) => {
+  const origin = process.env.CORS_ORIGIN || "*";
+  res.header("Access-Control-Allow-Origin", origin);
+  res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -71,23 +93,49 @@ app.get("/health", (req, res) => {
   res.status(200).json({
     ok: true,
     mongo: Boolean(db),
-    mqttConnected
+    firebase: Boolean(firebaseDB),
+    mqttConnected,
+    topics: { capteurs: topicCapteurs, marlin: topicMarlin }
   });
+});
+
+app.get("/api/export/dataset", (req, res) => {
+  ensureCsvFiles();
+  if (!fs.existsSync(datasetFile)) {
+    return res.status(404).json({ error: "dataset_labeled.csv introuvable" });
+  }
+  res.download(datasetFile, "dataset_labeled.csv");
+});
+
+app.get("/api/export/marlin", (req, res) => {
+  ensureCsvFiles();
+  if (!fs.existsSync(marlinFile)) {
+    return res.status(404).json({ error: "marlin_logs.csv introuvable" });
+  }
+  res.download(marlinFile, "marlin_logs.csv");
 });
 
 server.listen(PORT, () => {
   console.log(`🌐 Dashboard: http://localhost:${PORT}`);
+  ensureCsvFiles();
 });
 
-// ===================== FIREBASE =====================
-admin.initializeApp({
-  credential: admin.credential.cert(loadServiceAccount()),
-  databaseURL
-});
+let firebaseDB = null;
+const serviceAccount = loadServiceAccount();
+if (serviceAccount) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL
+  });
+  firebaseDB = admin.database();
+  console.log("✅ Firebase Admin connecté");
+} else {
+  console.log(
+    "⚠️ Firebase Admin désactivé — placez firebaseKey.json dans backend/ " +
+      "ou définissez FIREBASE_SERVICE_ACCOUNT_JSON (MQTT + CSV actifs)."
+  );
+}
 
-const firebaseDB = admin.database();
-
-/** Payload sérialisable RTDB (pas d’ObjectId Mongo, dates en ISO). */
 function toRealtimePayload(data) {
   const { _id, ...rest } = data;
   const copy = { ...rest };
@@ -97,7 +145,6 @@ function toRealtimePayload(data) {
   return copy;
 }
 
-// ===================== INIT MONGO (optionnel) =====================
 async function initMongo() {
   if (!mongoURL) {
     console.log(
@@ -115,11 +162,12 @@ async function initMongo() {
   }
 }
 
-// ===================== MQTT CONNECT =====================
 mqttClient.on("connect", () => {
   mqttConnected = true;
-  console.log(`✅ MQTT connecté → ${mqttBroker} · topic « ${topic} »`);
-  mqttClient.subscribe(topic);
+  console.log(`✅ MQTT connecté → ${mqttBroker}`);
+  mqttClient.subscribe([topicCapteurs, topicMarlin]);
+  console.log(`   capteurs: ${topicCapteurs}`);
+  console.log(`   marlin:   ${topicMarlin}`);
 });
 
 mqttClient.on("close", () => {
@@ -130,28 +178,60 @@ mqttClient.on("error", err => {
   console.error("❌ MQTT:", err.message || err);
 });
 
-// ===================== MQTT MESSAGE =====================
 mqttClient.on("message", async (topicReceived, message) => {
   try {
-    const data = JSON.parse(message.toString());
+    const payload = message.toString();
 
-    data.serverTime = new Date();
+    if (topicReceived === topicMarlin) {
+      const timestamp = new Date().toISOString();
+      fs.appendFileSync(
+        marlinFile,
+        `"${timestamp}","${payload.replace(/"/g, '""')}"\n`
+      );
+      parseMarlinLine(payload);
+
+      const marlinEntry = {
+        raw_marlin: payload,
+        serverTime: new Date(),
+        timestamp
+      };
+      if (firebaseDB) {
+        await firebaseDB.ref("marlin").push(toRealtimePayload(marlinEntry));
+      }
+      io.emit("marlin", marlinEntry);
+      console.log("📟 Marlin:", payload.slice(0, 80));
+      return;
+    }
+
+    if (topicReceived !== topicCapteurs) return;
+
+    const parsed = JSON.parse(payload);
+    const flat = flattenSensorPayload(parsed);
+    const fault = detectFault(flat);
+
+    const data = {
+      ...flat,
+      ...fault,
+      serverTime: new Date()
+    };
+
+    fs.appendFileSync(datasetFile, datasetCsvLine(data) + "\n");
 
     const rtdbPayload = toRealtimePayload(data);
-    await firebaseDB.ref("capteurs").push(rtdbPayload);
+    if (firebaseDB) {
+      await firebaseDB.ref("capteurs").push(rtdbPayload);
+    }
 
     if (db) {
       await db.collection("capteurs").insertOne(data);
     }
 
     io.emit("data", data);
-
-    console.log("📩 Data:", data);
+    console.log("📩 Capteurs:", fault.fault_label);
   } catch (err) {
     console.error("❌ Erreur:", err.message || err);
     if (err.code) console.error("   code:", err.code);
   }
 });
 
-// ===================== START =====================
 initMongo();

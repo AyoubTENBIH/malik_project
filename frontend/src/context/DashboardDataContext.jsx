@@ -16,7 +16,8 @@ import {
 import { rtdb } from "../firebase";
 import {
   normalizeSensorReading,
-  sortReadingsNewestFirst
+  sortReadingsNewestFirst,
+  faultLabelDisplay
 } from "../utils/sensorReading";
 
 const DashboardDataContext = createContext(null);
@@ -24,28 +25,47 @@ const DashboardDataContext = createContext(null);
 export const CAPTEURS_PATH =
   process.env.REACT_APP_FIREBASE_CAPTEURS_PATH || "capteurs";
 
-/** Limite les lectures RTDB + le travail des graphiques (évite le lag si l’historique grossit). */
 const MAX_POINTS = Math.min(
   500,
   Math.max(50, Number(process.env.REACT_APP_FIREBASE_MAX_POINTS) || 200)
 );
 
+export const API_BASE =
+  process.env.REACT_APP_API_URL || "http://localhost:3000";
+
 export const METRICS = [
-  { key: "temperature", title: "Température", unit: "°C", color: "#ef4444" },
-  { key: "humidity", title: "Humidité", unit: "%", color: "#3b82f6" },
-  { key: "gas", title: "Gaz", unit: "ppm", color: "#10b981" },
+  { key: "tempMotorTop", title: "Moteur (haut)", unit: "°C", color: "#ef4444" },
+  {
+    key: "tempMotorBottom",
+    title: "Moteur (bas)",
+    unit: "°C",
+    color: "#f97316"
+  },
+  { key: "gas", title: "Gaz MQ2", unit: "", color: "#10b981" },
   { key: "courant", title: "Courant", unit: "A", color: "#8b5cf6" },
   { key: "tension", title: "Tension", unit: "V", color: "#f59e0b" },
-  { key: "piezo", title: "Piezo / vibration", unit: "", color: "#ec4899" },
+  {
+    key: "piezoLeft",
+    title: "Vibration gauche",
+    unit: "",
+    color: "#ec4899"
+  },
+  {
+    key: "piezoRight",
+    title: "Vibration droite",
+    unit: "",
+    color: "#d946ef"
+  },
+  { key: "nozzleTemp", title: "Buse", unit: "°C", color: "#dc2626" },
+  { key: "bedTemp", title: "Plateau", unit: "°C", color: "#ea580c" },
   { key: "x", title: "Accéléro X", unit: "m/s²", color: "#06b6d4" },
   { key: "y", title: "Accéléro Y", unit: "m/s²", color: "#84cc16" },
-  { key: "z", title: "Accéléro Z", unit: "m/s²", color: "#f97316" },
-  { key: "gyroX", title: "Gyro X", unit: "rad/s", color: "#14b8a6" },
-  { key: "gyroY", title: "Gyro Y", unit: "rad/s", color: "#a855f7" },
-  { key: "gyroZ", title: "Gyro Z", unit: "rad/s", color: "#eab308" }
+  { key: "z", title: "Accéléro Z", unit: "m/s²", color: "#14b8a6" },
+  { key: "gyroX", title: "Gyro X", unit: "rad/s", color: "#a855f7" },
+  { key: "gyroY", title: "Gyro Y", unit: "rad/s", color: "#eab308" },
+  { key: "gyroZ", title: "Gyro Z", unit: "rad/s", color: "#6366f1" }
 ];
 
-/** Référence stable quand aucune lecture (évite react-hooks/exhaustive-deps sur le contexte). */
 const EMPTY_LATEST = {};
 
 export function DashboardDataProvider({ children }) {
@@ -92,20 +112,30 @@ export function DashboardDataProvider({ children }) {
   }, []);
 
   const isOnline = data.length > 0;
-  const tempAlert = latest.temperature != null && latest.temperature > 30;
-  const gasAlert = latest.gas != null && latest.gas > 400;
 
-  const nowLabel = new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric"
-  });
+  const tempAlert =
+    (latest.tempMotorTop != null && latest.tempMotorTop > 70) ||
+    (latest.tempMotorBottom != null && latest.tempMotorBottom > 70);
+
+  const gasAlert =
+    latest.faultCode === 3 ||
+    (latest.gas != null && latest.gas > 2500);
+  const faultAlert = (latest.faultCode ?? 0) > 0;
+
+  const faultLabelFr = faultLabelDisplay(latest.faultLabel);
 
   const lastUpdate =
     latest._timeMs != null
       ? new Date(latest._timeMs).toLocaleString()
       : "—";
+
+  const downloadCsv = useCallback(kind => {
+    const path =
+      kind === "marlin"
+        ? `${API_BASE}/api/export/marlin`
+        : `${API_BASE}/api/export/dataset`;
+    window.open(path, "_blank", "noopener,noreferrer");
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -116,13 +146,16 @@ export function DashboardDataProvider({ children }) {
       isOnline,
       tempAlert,
       gasAlert,
-      nowLabel,
+      faultAlert,
+      faultLabelFr,
       lastUpdate,
       zone,
       setZone,
       METRICS,
       maxPoints: MAX_POINTS,
-      capteursPath: CAPTEURS_PATH
+      capteursPath: CAPTEURS_PATH,
+      downloadCsv,
+      apiBase: API_BASE
     }),
     [
       data,
@@ -132,9 +165,11 @@ export function DashboardDataProvider({ children }) {
       isOnline,
       tempAlert,
       gasAlert,
-      nowLabel,
+      faultAlert,
+      faultLabelFr,
       lastUpdate,
-      zone
+      zone,
+      downloadCsv
     ]
   );
 
@@ -152,8 +187,6 @@ export function useDashboardData() {
   }
   return ctx;
 }
-
-/* --- Thème clair / sombre (UI uniquement) --- */
 
 const THEME_STORAGE_KEY = "iot-print-theme";
 
