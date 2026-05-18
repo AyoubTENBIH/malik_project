@@ -2,11 +2,12 @@
   "name": "malik-project",
   "private": true,
   "engines": {
-    "node": ">=18"
+    "node": "20.x"
   },
   "scripts": {
-    "postinstall": "npm install --prefix backend",
-    "start": "npm --prefix backend start",
+    "build": "npm ci --prefix backend --omit=dev",
+    "postinstall": "npm install --prefix backend --omit=dev",
+    "start": "node backend/server.js",
     "collector": "node collector.js"
   },
   "dependencies": {

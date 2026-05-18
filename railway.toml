@@ -1,8 +1,8 @@
-# Build/deploy depuis la racine du dépôt : délégation à backend/ (voir package.json).
+# Service Railway à la racine du dépôt (voir nixpacks.toml)
 [build]
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "node backend/server.js"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

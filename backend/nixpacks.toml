@@ -1,0 +1,12 @@
+# Si Root Directory = backend dans le dashboard Railway
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci --omit=dev"]
+
+[phases.build]
+cmds = ["node --check server.js"]
+
+[start]
+cmd = "node server.js"

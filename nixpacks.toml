@@ -1,0 +1,12 @@
+# Déploiement Railway : backend Node uniquement (pas le frontend React)
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci --prefix backend --omit=dev"]
+
+[phases.build]
+cmds = ["node --check backend/server.js"]
+
+[start]
+cmd = "node backend/server.js"

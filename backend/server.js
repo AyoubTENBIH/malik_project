@@ -27,7 +27,7 @@ const topicMarlin =
 const mongoURL = process.env.MONGODB_URI || "";
 const dbName = process.env.MONGODB_DB_NAME || "iot_db";
 
-const dataDir = process.env.DATA_DIR || path.join(__dirname, "..");
+const dataDir = process.env.DATA_DIR || path.join(__dirname, "data");
 const datasetFile = path.join(dataDir, "dataset_labeled.csv");
 const marlinFile = path.join(dataDir, "marlin_logs.csv");
 
@@ -62,6 +62,9 @@ function loadServiceAccount() {
 }
 
 function ensureCsvFiles() {
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
   if (!fs.existsSync(datasetFile)) {
     fs.writeFileSync(datasetFile, DATASET_HEADER);
   }
